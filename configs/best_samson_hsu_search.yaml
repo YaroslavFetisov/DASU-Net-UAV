@@ -1,0 +1,17 @@
+training:
+  learning_rate: 0.00023270677083837802
+  beta: 405.9611610484308
+  gamma: 0.01120760621186057
+  delta: 0.0019762189340280074
+  lambda_reg: 0.0007476312062252305
+model:
+  encoder_type: swin
+  decoder_type: nonlinear
+  use_dual_attention: true
+_optuna:
+  study_name: hsu_search_samson
+  n_trials: 5
+  best_trial: 3
+  best_score: 0.38525394474466645
+  best_rmse: 0.37850648164749146
+  best_sad: 0.3920014078418414

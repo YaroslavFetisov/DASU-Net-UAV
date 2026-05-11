@@ -34,6 +34,8 @@ training:
   grad_clip_type: 1            # L1 norm
   beta: 5.0e+3                 # MSE loss weight
   gamma: 3.0e-2                # SAD loss weight
+  delta: 1.0e-2                # MinVol regularization weight
+  lambda_reg: 1.0e-2           # Sparsity (entropy) regularization weight
 
 # --- Logging --------------------------------------------------
 logging:

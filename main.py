@@ -100,6 +100,8 @@ def train(cfg: dict, device: torch.device, run_dir: Path) -> None:
         num_bands=dataset.L,
         beta=t_cfg["beta"],
         gamma=t_cfg["gamma"],
+        delta=t_cfg.get("delta", 1e-2),
+        lambda_reg=t_cfg.get("lambda_reg", 1e-2),
     ).to(device)
 
     optimizer = torch.optim.Adam(
@@ -125,7 +127,8 @@ def train(cfg: dict, device: torch.device, run_dir: Path) -> None:
 
     for epoch in range(epochs):
         abu_est, recon = model(img_cube)
-        loss = loss_fn(recon, img_cube)
+        endmem = model.decoder.get_endmembers()  # (L, P)
+        loss = loss_fn(recon, img_cube, abu_est, endmem)
 
         optimizer.zero_grad()
         loss.backward()
@@ -144,8 +147,12 @@ def train(cfg: dict, device: torch.device, run_dir: Path) -> None:
 
         if epoch % print_every == 0 or epoch == epochs - 1:
             lr = optimizer.param_groups[0]["lr"]
+            bd = loss_fn.breakdown(recon, img_cube, abu_est, endmem)
             print(f"    Epoch {epoch:4d}/{epochs}  "
-                  f"loss={loss.item():.4f}  lr={lr:.6f}")
+                  f"loss={loss.item():.4f}  "
+                  f"mse={bd['mse']:.2f}  sad={bd['sad']:.4f}  "
+                  f"vol={bd['vol']:.4f}  spar={bd['spar']:.4f}  "
+                  f"lr={lr:.6f}")
 
     elapsed = time.time() - t0
     print(f"\n  Training completed in {elapsed:.1f}s")

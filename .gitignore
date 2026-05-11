@@ -14,7 +14,6 @@ __pycache__/
 
 # Project specific
 runs/
-data/raw/*.mat
 data/processed/*.pt
 data/processed/*.npy
 

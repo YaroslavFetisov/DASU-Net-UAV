@@ -111,6 +111,58 @@ class NonZeroClipper:
 
 
 # =====================================================================
+# Abundance Decoder
+# =====================================================================
+
+class AbundanceDecoder(nn.Module):
+    """
+    Upscales the global embedding back to (B, P, H, W) and fuses with
+    CNN skip-connections to preserve fine spatial details.
+    """
+    def __init__(self, emb_dim: int, num_endmembers: int, skip_channels: int = 64):
+        super().__init__()
+        self.P = num_endmembers
+        
+        self.up_blocks = nn.Sequential(
+            # 1x1 -> 8x8
+            nn.ConvTranspose2d(emb_dim, 256, kernel_size=8, stride=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(inplace=True),
+            # 8x8 -> 32x32
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=4),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+        )
+        
+        self.merge_conv = nn.Sequential(
+            nn.Conv2d(128 + skip_channels, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(64, self.P, kernel_size=3, padding=1),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, emb: torch.Tensor, skip_feat: torch.Tensor) -> torch.Tensor:
+        """
+        emb       : (B, emb_dim)
+        skip_feat : (B, skip_channels, H, W) from CNNEncoder
+        """
+        B, C, H, W = skip_feat.shape
+        x = emb.view(B, -1, 1, 1)
+        
+        x = self.up_blocks(x)
+        
+        # Interpolate to exactly match the skip features spatial size
+        x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False)
+        
+        # Skip connection fusion
+        x = torch.cat([x, skip_feat], dim=1)
+        
+        # Final convolution to P channels + softmax
+        return self.merge_conv(x)
+
+
+# =====================================================================
 # Main AutoEncoder
 # =====================================================================
 
@@ -191,10 +243,10 @@ class DeepUnmixer(nn.Module):
             raise ValueError(f"Unknown encoder_type: {encoder_type}")
 
         # --- 4. Abundance map generation ---
-        self.upscale = nn.Linear(self.dim, spatial_size ** 2)
-        self.smooth = nn.Sequential(
-            nn.Conv2d(self.P, self.P, kernel_size=3, padding=1),
-            nn.Softmax(dim=1),
+        self.abundance_decoder = AbundanceDecoder(
+            emb_dim=emb_dim,
+            num_endmembers=self.P,
+            skip_channels=64
         )
 
         # --- 5. Decoder ---
@@ -254,7 +306,8 @@ class DeepUnmixer(nn.Module):
         reconstructed : (B, L, H, W) — reconstructed HSI.
         """
         # 1. CNN feature extraction
-        feat = self.cnn_encoder(x)              # (B, C, H, W)
+        skip_feat = self.cnn_encoder.net[:7](x)  # (B, 64, H, W)
+        feat = self.cnn_encoder.net[7:](skip_feat) # (B, C, H, W)
 
         # 2. Optional dual attention
         if self.use_dual_attention:
@@ -263,11 +316,8 @@ class DeepUnmixer(nn.Module):
         # 3. Transformer encoding
         emb = self.transformer(feat)             # (B, emb_dim)
 
-        # 4. Reshape -> upscale -> smooth -> softmax (abundance maps)
-        emb = emb.view(-1, self.P, self.dim)     # (B, P, dim)
-        abu = self.upscale(emb)                  # (B, P, H*W)
-        abu = abu.view(-1, self.P, self.H, self.W)  # (B, P, H, W)
-        abu = self.smooth(abu)                   # softmax along P dim
+        # 4. Transpose Conv Decoder + Skip Connection
+        abu = self.abundance_decoder(emb, skip_feat) # (B, P, H, W)
 
         # 5. Decode to reconstructed HSI
         recon = self.decoder(abu)                # (B, L, H, W)
@@ -308,6 +358,11 @@ if __name__ == "__main__":
         )),
         ("Apex-improved", dict(
             num_endmembers=4, num_bands=285, spatial_size=110,
+            encoder_type="swin", decoder_type="nonlinear",
+            use_dual_attention=True, window_size=5,
+        )),
+        ("OddSize-improved", dict(
+            num_endmembers=5, num_bands=100, spatial_size=125,
             encoder_type="swin", decoder_type="nonlinear",
             use_dual_attention=True, window_size=5,
         )),

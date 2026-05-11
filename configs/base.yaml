@@ -1,0 +1,41 @@
+# ============================================================
+# DeepUnmixing_v2 — Base Configuration (Samson defaults)
+# ============================================================
+
+seed: 42
+
+# --- Dataset --------------------------------------------------
+dataset:
+  name: "samson"               # samson | apex
+  data_dir: "./data/raw"
+
+# --- Model ----------------------------------------------------
+model:
+  encoder_type: "vit"          # vit | swin
+  decoder_type: "linear"       # linear | nonlinear
+  use_dual_attention: false
+  init_method: "sivm"          # vca | sivm | kmeans_pp
+  patch_size: 5
+  emb_dim_per_endmember: 200   # dim per endmember
+  transformer_depth: 2
+  num_heads: 8
+  window_size: 5               # for Swin
+  mlp_dim: 12                  # for ViT FFN
+  nonlinear_gamma: 1.0         # for PPNMM decoder
+
+# --- Training -------------------------------------------------
+training:
+  epochs: 200
+  learning_rate: 6.0e-3
+  weight_decay: 4.0e-5
+  scheduler_step: 15
+  scheduler_gamma: 0.8
+  grad_clip_norm: 10.0
+  grad_clip_type: 1            # L1 norm
+  beta: 5.0e+3                 # MSE loss weight
+  gamma: 3.0e-2                # SAD loss weight
+
+# --- Logging --------------------------------------------------
+logging:
+  print_every: 10
+  save_dir: "./runs"

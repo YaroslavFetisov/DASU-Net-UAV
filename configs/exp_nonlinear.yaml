@@ -1,0 +1,6 @@
+# Experiment: Non-linear (bilinear/PPNMM) decoder
+# Overrides base.yaml
+model:
+  encoder_type: "vit"
+  decoder_type: "nonlinear"
+  nonlinear_gamma: 1.0

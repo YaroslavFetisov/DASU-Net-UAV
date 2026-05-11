@@ -1,0 +1,6 @@
+# Experiment: Swin Transformer encoder
+# Overrides base.yaml
+model:
+  encoder_type: "swin"
+  use_dual_attention: false
+  decoder_type: "linear"

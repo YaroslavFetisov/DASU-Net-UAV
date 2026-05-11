@@ -1,0 +1,8 @@
+# Experiment: All improvements combined
+# Swin + Dual Attention + Non-linear Decoder + SiVM init
+model:
+  encoder_type: "swin"
+  use_dual_attention: true
+  decoder_type: "nonlinear"
+  nonlinear_gamma: 1.0
+  init_method: "sivm"

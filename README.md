@@ -8,6 +8,9 @@
 
 Building upon standard transformer-based baselines, this `v2` release fundamentally re-architects the feature extraction and decoding pathways, reducing the reconstruction error (RMSE) by **over 70%** compared to standard Vision Transformer (ViT) approaches.
 
+![Abundance Maps Comparison](assets/comparison_maps.png)
+![Spectral Signatures](assets/spectra_results.png)
+
 ---
 
 ## 🚀 Key Innovations & Architecture

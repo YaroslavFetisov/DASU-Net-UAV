@@ -16,6 +16,8 @@ __pycache__/
 runs/
 data/processed/*.pt
 data/processed/*.npy
+data/raw/*.mat
+*.db
 
 # Environment
 .env

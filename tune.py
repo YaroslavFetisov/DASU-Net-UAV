@@ -352,6 +352,10 @@ def main() -> None:
 def _progress_callback(study: optuna.Study,
                         trial: optuna.FrozenTrial) -> None:
     """Print a one-liner after each trial."""
+    if trial.state != optuna.trial.TrialState.COMPLETE:
+        print(f"  Trial {trial.number:3d} | PRUNED/FAILED")
+        return
+        
     rmse = trial.user_attrs.get("rmse", float("nan"))
     sad  = trial.user_attrs.get("sad",  float("nan"))
     best = study.best_value

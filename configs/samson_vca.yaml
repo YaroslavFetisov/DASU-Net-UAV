@@ -1,0 +1,11 @@
+training:
+  learning_rate: 0.0002327
+  beta: 405.96
+  gamma: 0.0112
+  delta: 0.001976
+  lambda_reg: 0.000747
+model:
+  encoder_type: swin
+  decoder_type: nonlinear
+  use_dual_attention: true
+  init_method: vca

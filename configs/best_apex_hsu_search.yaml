@@ -1,0 +1,17 @@
+training:
+  learning_rate: 0.008174503642355125
+  beta: 555.3456436868396
+  gamma: 0.0027786761236793587
+  delta: 0.00010788661515919537
+  lambda_reg: 0.04543298747401567
+model:
+  encoder_type: swin
+  decoder_type: nonlinear
+  use_dual_attention: true
+_optuna:
+  study_name: apex_search_apex
+  n_trials: 100
+  best_trial: 19
+  best_score: 0.390516210347414
+  best_rmse: 0.30993956327438354
+  best_sad: 0.4710928574204445

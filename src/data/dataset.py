@@ -1,12 +1,12 @@
 """
-HyperspectralDataset — PyTorch Dataset для гіперспектральних .mat файлів.
+HyperspectralDataset — PyTorch Dataset for hyperspectral .mat files.
 
-Підтримувані датасети: Samson, Apex.
-Кожен .mat файл містить:
-    Y  — (L, N) гіперспектральне зображення  (L спектральних каналів, N = H*W пікселів)
-    A  — (P, N) карти долей (abundance maps)     (P — кількість ендмемберів)
-    M  — (L, P) ground-truth ендмембери
-    M1 — (L, P) початкові ваги (VCA-ініціалізація)
+Supported datasets: Samson, Apex.
+Each .mat file contains:
+    Y  — (L, N) hyperspectral image (L spectral bands, N = H*W pixels)
+    A  — (P, N) abundance maps (P — number of endmembers)
+    M  — (L, P) ground-truth endmembers
+    M1 — (L, P) initial weights (VCA-initialization)
 """
 
 from __future__ import annotations

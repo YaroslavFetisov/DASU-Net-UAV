@@ -1,11 +1,11 @@
 """
-DataLoader factory — створює PyTorch DataLoader для гіперспектрального датасету.
+DataLoader factory — creates PyTorch DataLoader for the hyperspectral dataset.
 
-Два режими роботи:
-    1. ``mode="full"`` (за замовчуванням)  — весь датасет в одному батчі,
-       як в оригінальному DeepTrans-HSU (batch_size = col²).
-    2. ``mode="patch"``  — підтримка mini-batch навчання з випадковим
-       перемішуванням пікселів (для майбутніх експериментів).
+Two operating modes:
+    1. ``mode="full"`` (default)  — the entire dataset in one batch,
+       like in the original DeepTrans-HSU (batch_size = col²).
+    2. ``mode="patch"``  — supports mini-batch training with random
+       pixel shuffling (for future experiments).
 """
 
 from __future__ import annotations

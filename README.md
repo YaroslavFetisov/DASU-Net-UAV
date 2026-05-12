@@ -15,14 +15,14 @@ Building upon standard transformer-based baselines, this architecture fundamenta
 
 ## 🚀 Key Innovations & Architecture
 
-1. **Swin Transformer over ViT**: Replaced global self-attention $\mathcal{O}(N^2)$ with windowed attention $\mathcal{O}(N \cdot ws^2)$. This significantly reduces computational complexity and memory footprint while better capturing local spatial contexts for high-resolution hyperspectral cubes.
-2. **Dual Attention Block (Spatial + XCA Spectral)**: Implements parallel spatial and Cross-Covariance Attention (XCA). XCA operates across the channel dimension, efficiently modeling spectral correlations without the $N \times N$ bottleneck.
+1. **Swin Transformer over ViT**: Replaced global self-attention O(N²) with windowed attention O(N * ws²). This significantly reduces computational complexity and memory footprint while better capturing local spatial contexts for high-resolution hyperspectral cubes.
+2. **Dual Attention Block (Spatial + XCA Spectral)**: Implements parallel spatial and Cross-Covariance Attention (XCA). XCA operates across the channel dimension, efficiently modeling spectral correlations without the N x N bottleneck.
 3. **U-Net Style Abundance Decoder**: Unlike traditional methods that flatten latent vectors into spatial maps via a single linear layer (destroying high-frequency boundaries), DASU-Net employs a `ConvTranspose2d` pathway equipped with **Skip-Connections**. It fuses high-level semantic embeddings with low-level CNN features to preserve precise geographical boundaries.
-4. **Non-linear PPNMM Decoder**: Upgraded from the standard linear $Y = EA$ constraint to a Polynomial Post-Nonlinear Mixing Model (PPNMM), simulating secondary photon reflections and scattering interferences between endmembers ($\gamma \cdot (e_i \odot e_j)$).
+4. **Non-linear PPNMM Decoder**: Upgraded from the standard linear `Y = EA` constraint to a Polynomial Post-Nonlinear Mixing Model (PPNMM), simulating secondary photon reflections and scattering interferences between endmembers (γ * (e_i ⊙ e_j)).
 5. **Physics-Informed Regularization**:
     *   **Warm Start Initialization**: Decoder endmembers are initialized via mathematical geometric projections (SiVM or VCA) to avoid local minima.
-    *   **MinVol Penalty**: Uses numerically stable Cholesky decomposition ($\log \det(E^T E + \epsilon I)$) to prevent degenerate, non-physical endmember simplices (prevents the model from "hallucinating" unrealistically bright materials).
-    *   **Entropy Sparsity**: Penalizes abundance distribution entropy ($-A \log A$) instead of standard $L_1$, forcing physical sparsity under sum-to-one Softmax constraints.
+    *   **MinVol Penalty**: Uses numerically stable Cholesky decomposition (`log det(Eᵀ E + εI)`) to prevent degenerate, non-physical endmember simplices (prevents the model from "hallucinating" unrealistically bright materials).
+    *   **Entropy Sparsity**: Penalizes abundance distribution entropy (-A * log A) instead of standard L₁, forcing physical sparsity under sum-to-one Softmax constraints.
 
 ---
 

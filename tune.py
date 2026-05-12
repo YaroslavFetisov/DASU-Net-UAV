@@ -1,5 +1,5 @@
 """
-DeepUnmixing_v2 — Hyperparameter tuning with Optuna.
+DASU-Net — Hyperparameter tuning with Optuna.
 
 Usage:
     python tune.py                          # 50 trials, Samson, Swin
@@ -29,7 +29,7 @@ import torch.nn as nn
 import yaml
 
 from src.data import HyperspectralDataset
-from src.models.unmixer import DeepUnmixer
+from src.models.unmixer import DASUNet
 from src.core.losses import TotalLoss
 from src.core.metrics import compute_rmse, compute_sad, match_endmembers
 from src.utils.config_parser import load_config
@@ -71,7 +71,7 @@ def _quick_train(
     img_cube = dataset.get_image_cube()   # (1, L, H, W)
 
     # ---- Model ---------------------------------------------------
-    model = DeepUnmixer(
+    model = DASUNet(
         num_endmembers=dataset.P,
         num_bands=dataset.L,
         spatial_size=dataset.col,
@@ -208,7 +208,7 @@ def build_objective(cfg: dict, dataset: HyperspectralDataset,
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="DeepUnmixing_v2 — Optuna hyperparameter search"
+        description="DASU-Net — Optuna hyperparameter search"
     )
     p.add_argument("--config", type=str, default="configs/base.yaml")
     p.add_argument("--dataset", type=str, default=None,
@@ -242,7 +242,7 @@ def main() -> None:
     dataset_name = cfg["dataset"]["name"]
 
     print(f"\n{'='*60}")
-    print(f"  DeepUnmixing_v2 — Optuna Hyperparameter Search")
+    print(f"  DASU-Net — Optuna Hyperparameter Search")
     print(f"  Device:   {device}")
     print(f"  Dataset:  {dataset_name}")
     print(f"  Trials:   {args.n_trials}")

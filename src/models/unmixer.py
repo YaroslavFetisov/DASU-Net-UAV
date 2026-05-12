@@ -1,5 +1,5 @@
 """
-DeepUnmixer -- configurable AutoEncoder for hyperspectral unmixing.
+DASUNet -- configurable AutoEncoder for hyperspectral unmixing.
 
 Supports two configurations:
     baseline  : CNNEncoder + ViT  + LinearDecoder    (original paper)
@@ -166,7 +166,7 @@ class AbundanceDecoder(nn.Module):
 # Main AutoEncoder
 # =====================================================================
 
-class DeepUnmixer(nn.Module):
+class DASUNet(nn.Module):
     """
     Configurable AutoEncoder for hyperspectral unmixing.
 
@@ -326,7 +326,7 @@ class DeepUnmixer(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f"DeepUnmixer(P={self.P}, L={self.L}, spatial={self.H}x{self.W}, "
+            f"DASUNet(P={self.P}, L={self.L}, spatial={self.H}x{self.W}, "
             f"encoder={self.encoder_type}, decoder={self.decoder_type}, "
             f"dual_attn={self.use_dual_attention})"
         )
@@ -372,7 +372,7 @@ if __name__ == "__main__":
         print(f"--- {name} ---")
         P, L, H = cfg["num_endmembers"], cfg["num_bands"], cfg["spatial_size"]
 
-        model = DeepUnmixer(**cfg).to(device)
+        model = DASUNet(**cfg).to(device)
         model.apply(model.weights_init)
         print(f"  {model}")
 

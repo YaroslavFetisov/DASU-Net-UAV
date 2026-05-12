@@ -1,5 +1,5 @@
 """
-DeepUnmixing_v2 — Main training script.
+DASU-Net — Main training script.
 
 Usage:
     python main.py --config configs/base.yaml
@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 from src.data import HyperspectralDataset
-from src.models.unmixer import DeepUnmixer
+from src.models.unmixer import DASUNet
 from src.core.losses import TotalLoss
 from src.core.metrics import compute_rmse, compute_sad, match_endmembers
 from src.utils.config_parser import load_config, get
@@ -32,7 +32,7 @@ from src.utils.config_parser import load_config, get
 # ------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="DeepUnmixing_v2 Training")
+    p = argparse.ArgumentParser(description="DASU-Net Training")
     p.add_argument("--config", type=str, default="configs/base.yaml")
     p.add_argument("--override", type=str, default=None,
                    help="Experiment YAML that overrides base config")
@@ -70,7 +70,7 @@ def train(cfg: dict, device: torch.device, run_dir: Path) -> None:
     img_cube = dataset.get_image_cube()     # (1, L, H, W)
 
     # ---- 2. Model ------------------------------------------------
-    model = DeepUnmixer(
+    model = DASUNet(
         num_endmembers=dataset.P,
         num_bands=dataset.L,
         spatial_size=dataset.col,
@@ -242,7 +242,7 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'='*60}")
-    print(f"  DeepUnmixing_v2")
+    print(f"  DASU-Net")
     print(f"  Device:  {device}")
     print(f"  Run:     {run_dir}")
     print(f"{'='*60}\n")

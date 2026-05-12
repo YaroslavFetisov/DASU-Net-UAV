@@ -1,5 +1,5 @@
 """
-Visualization utilities for DeepUnmixing_v2.
+Visualization utilities for DASU-Net.
 
 Functions
 ---------

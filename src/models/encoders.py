@@ -1,5 +1,5 @@
 """
-Encoder components for DeepUnmixing_v2.
+Encoder components for DASU-Net.
 
 Modules
 -------

@@ -1,5 +1,5 @@
 """
-Decoder components for DeepUnmixing_v2.
+Decoder components for DASU-Net.
 
 Classes
 -------

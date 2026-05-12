@@ -1,10 +1,10 @@
-# DeepUnmixing_v2 🌌
+# DASU-Net 🌌
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch)
 ![Optuna](https://img.shields.io/badge/Optuna-Hyperparameter_Tuning-blue?style=for-the-badge&logo=optuna)
 ![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
-**DeepUnmixing_v2** is a state-of-the-art deep AutoEncoder framework designed for **Blind Hyperspectral Unmixing (HSU)**. It estimates pure material spectra (endmembers) and their fractional compositions (abundances) from mixed hyperspectral pixels in an unsupervised manner.
+**DASU-Net** is a state-of-the-art deep AutoEncoder framework designed for **Blind Hyperspectral Unmixing (HSU)**. It estimates pure material spectra (endmembers) and their fractional compositions (abundances) from mixed hyperspectral pixels in an unsupervised manner.
 
 Building upon standard transformer-based baselines, this `v2` release fundamentally re-architects the feature extraction and decoding pathways, reducing the reconstruction error (RMSE) by **over 70%** compared to standard Vision Transformer (ViT) approaches.
 
@@ -27,7 +27,7 @@ Building upon standard transformer-based baselines, this `v2` release fundamenta
 
 Evaluated on the widely adopted **Samson** dataset (156 bands, $95 \times 95$ spatial, 3 endmembers). 
 
-| Metric | Baseline (ViT + Linear) | **DeepUnmixing_v2 (Swin + U-Net + PPNMM)** | Improvement |
+| Metric | Baseline (ViT + Linear) | **DASU-Net (Swin + U-Net + PPNMM)** | Improvement |
 | :--- | :---: | :---: | :---: |
 | **Mean RMSE** | 0.5474 | **0.1585** | **-71.0%** 🚀 |
 | **Mean SAD** | 0.4091 | **0.1938** | **-52.6%** 🚀 |
@@ -42,8 +42,8 @@ Evaluated on the widely adopted **Samson** dataset (156 bands, $95 \times 95$ sp
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/DeepUnmixing_v2.git
-cd DeepUnmixing_v2
+git clone https://github.com/yourusername/DASU-Net.git
+cd DASU-Net
 
 # Create Conda environment
 conda create -n hsu_env python=3.9 -y
@@ -81,7 +81,7 @@ Because of the Swin Transformer's linear complexity, evaluating 200 epochs on an
 ## 📂 Project Structure
 
 ```text
-DeepUnmixing_v2/
+DASU-Net/
 ├── configs/                  # YAML configurations (base & overrides)
 ├── data/raw/                 # .mat hyperspectral datasets
 ├── notebooks/
@@ -89,7 +89,7 @@ DeepUnmixing_v2/
 ├── src/
 │   ├── core/                 # Losses, metrics, SiVM/VCA initialization
 │   ├── data/                 # Dataset and DataLoader logic
-│   ├── models/               # Encoders, Decoders, and DeepUnmixer AutoEncoder
+│   ├── models/               # Encoders, Decoders, and DASUNet AutoEncoder
 │   └── utils/                # Plotting tools and config parsers
 ├── main.py                   # Main training loop
 └── tune.py                   # Optuna hyperparameter search

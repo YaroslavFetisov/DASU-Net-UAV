@@ -326,42 +326,59 @@ def generate_publication_figures(results: dict, out_dir: Path):
     P = gt_abu.shape[2]
     em_names = ["Crop Canopy", "Dry Soil", "Water Feature", "Road/Mineral"]
 
-    # --- Figure 1: Abundance Maps Comparison (Ground Truth vs Baseline vs DASU-Net) ---
-    fig_abu = plt.figure(figsize=(10.5, 7.2), dpi=300)
-    gs_abu = fig_abu.add_gridspec(3, P + 1, width_ratios=[1]*P + [0.06], wspace=0.15, hspace=0.22)
+    # --- Figure 1: Comprehensive Abundance Maps & Absolute Error Maps ---
+    fig_abu = plt.figure(figsize=(10.5, 9.2), dpi=300)
+    gs_abu = fig_abu.add_gridspec(5, P + 2, width_ratios=[1]*P + [0.06, 0.06], wspace=0.18, hspace=0.25)
 
-    rows = [
-        ("Ground Truth", gt_abu),
-        ("Baseline (ViT)", base_abu),
-        ("DASU-Net (Ours)", dasu_abu),
+    diff_base = np.abs(base_abu - gt_abu)
+    diff_dasu = np.abs(dasu_abu - gt_abu)
+    max_err = 0.12
+
+    row_data = [
+        ("Ground Truth", gt_abu, "viridis", 0.0, 1.0, "black"),
+        ("Baseline (ViT)", base_abu, "viridis", 0.0, 1.0, "black"),
+        ("Error: ViT\n$|\\hat{\\mathbf{A}} - \\mathbf{A}_{GT}|$", diff_base, "inferno", 0.0, max_err, "#b30000"),
+        ("DASU-Net (Ours)", dasu_abu, "viridis", 0.0, 1.0, "#006600"),
+        ("Error: DASU-Net\n$|\\hat{\\mathbf{A}} - \\mathbf{A}_{GT}|$", diff_dasu, "inferno", 0.0, max_err, "#006600"),
     ]
 
-    for r_idx, (r_title, maps) in enumerate(rows):
+    im_abu = None
+    im_err = None
+
+    for r_idx, (r_title, maps, cmap, vmin, vmax, color) in enumerate(row_data):
         for p in range(P):
             ax = fig_abu.add_subplot(gs_abu[r_idx, p])
-            im = ax.imshow(maps[:, :, p], cmap="viridis", vmin=0.0, vmax=1.0)
+            im = ax.imshow(maps[:, :, p], cmap=cmap, vmin=vmin, vmax=vmax)
             ax.set_xticks([])
             ax.set_yticks([])
             if r_idx == 0:
                 ax.set_title(em_names[p], fontsize=10.5, fontweight="bold", pad=5)
             if p == 0:
-                color = "#006600" if "DASU" in r_title else "black"
-                ax.set_ylabel(r_title, fontsize=10, fontweight="bold", labelpad=6, color=color)
+                ax.set_ylabel(r_title, fontsize=8.8, fontweight="bold", labelpad=6, color=color)
+            if r_idx == 0 and p == 0:
+                im_abu = im
+            if r_idx == 2 and p == 0:
+                im_err = im
 
-    cax = fig_abu.add_subplot(gs_abu[:, P])
-    cb = plt.colorbar(im, cax=cax)
-    cb.ax.tick_params(labelsize=8)
-    cb.set_label("Fractional Abundance", fontsize=9, labelpad=4)
+    # Colorbar for Abundances (Rows 0, 1, 3)
+    cax_abu = fig_abu.add_subplot(gs_abu[0:2, P])
+    cb_abu = plt.colorbar(im_abu, cax=cax_abu)
+    cb_abu.ax.tick_params(labelsize=8)
+    cb_abu.set_label("Fraction [0, 1]", fontsize=8.5, labelpad=3)
+
+    # Colorbar for Error Maps (Rows 2, 4)
+    cax_err = fig_abu.add_subplot(gs_abu[2:5, P])
+    cb_err = plt.colorbar(im_err, cax=cax_err)
+    cb_err.ax.tick_params(labelsize=8)
+    cb_err.set_label("Absolute Error", fontsize=8.5, labelpad=3)
 
     abu_path = out_dir / "abundance_comparison.png"
     plt.savefig(abu_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved Abundances Figure: {abu_path}")
 
-    # --- Figure 2: Dedicated Spectral Signatures with Residual Error Sub-panels ---
-    fig_spec = plt.figure(figsize=(11, 7.2), dpi=300)
-    # 2x2 grid of material sub-panels, each having a main plot and residual plot
-    outer_grid = fig_spec.add_gridspec(2, 2, wspace=0.25, hspace=0.32)
+    # --- Figure 2: Classic Clean IEEE Spectral Signatures (2x2 Grid) ---
+    fig_spec, axes = plt.subplots(2, 2, figsize=(10, 6.5), dpi=300, sharex=True, sharey=True)
     wl = np.linspace(400, 900, 150)
     true_em = uav_res["dasunet_sivm"]["true_endmem"]      # (L, P)
     base_em = uav_res["baseline"]["est_endmem"]          # (L, P)
@@ -370,45 +387,26 @@ def generate_publication_figures(results: dict, out_dir: Path):
     sad_dasu = uav_res["dasunet_sivm"]["sad_cls"]
     sad_base = uav_res["baseline"]["sad_cls"]
 
-    for p in range(P):
-        row_idx, col_idx = p // 2, p % 2
-        inner_grid = outer_grid[row_idx, col_idx].subgridspec(2, 1, height_ratios=[2.5, 1.0], hspace=0.08)
+    for p, ax in enumerate(axes.flat):
+        ax.plot(wl, true_em[:, p], color=colors[p], linestyle="-", linewidth=2.4, label="Ground Truth", alpha=0.95)
+        ax.plot(wl, dasu_em[:, p], color="black", linestyle="--", linewidth=1.8, label=f"DASU-Net (SAD={sad_dasu[p]:.4f})", alpha=0.9)
+        ax.plot(wl, base_em[:, p], color="tab:purple", linestyle=":", linewidth=1.5, label=f"ViT Base (SAD={sad_base[p]:.4f})", alpha=0.8)
         
-        # Main Reflectance Plot
-        ax_main = fig_spec.add_subplot(inner_grid[0])
-        ax_main.plot(wl, true_em[:, p], color=colors[p], linestyle="-", linewidth=2.2, label="Ground Truth", alpha=0.95)
-        ax_main.plot(wl, dasu_em[:, p], color="black", linestyle="--", linewidth=1.8, label=f"DASU-Net (SAD={sad_dasu[p]:.4f})", alpha=0.9)
-        ax_main.plot(wl, base_em[:, p], color="tab:purple", linestyle=":", linewidth=1.5, label=f"ViT Base (SAD={sad_base[p]:.4f})", alpha=0.8)
-        
-        ax_main.set_title(f"({chr(97+p)}) {em_names[p]}", fontsize=10.5, fontweight="bold", pad=4)
-        ax_main.set_xlim(395, 905)
-        ax_main.set_ylim(-0.02, 0.72)
-        ax_main.grid(True, linestyle="--", alpha=0.45)
-        ax_main.legend(loc="upper right" if p != 2 else "upper left", fontsize=7.5, framealpha=0.92)
-        ax_main.tick_params(labelbottom=False, labelsize=8)
-        ax_main.set_ylabel("Reflectance", fontsize=8.5)
+        ax.set_title(f"({chr(97+p)}) {em_names[p]}", fontsize=11, fontweight="bold")
+        ax.set_xlim(395, 905)
+        ax.set_ylim(-0.02, 0.72)
+        ax.grid(True, linestyle="--", alpha=0.45)
+        ax.legend(loc="upper right" if p != 2 else "upper left", fontsize=8, framealpha=0.92)
+        if p in [2, 3]:
+            ax.set_xlabel("Wavelength (nm)", fontsize=9.5)
+        if p in [0, 2]:
+            ax.set_ylabel("Reflectance", fontsize=9.5)
 
-        # Residual Error Plot
-        ax_res = fig_spec.add_subplot(inner_grid[1], sharex=ax_main)
-        res_dasu = dasu_em[:, p] - true_em[:, p]
-        res_base = base_em[:, p] - true_em[:, p]
-        ax_res.axhline(0, color="gray", linestyle="-", linewidth=0.8, alpha=0.7)
-        ax_res.plot(wl, res_dasu, color="black", linestyle="--", linewidth=1.5, label="Res: DASU-Net")
-        ax_res.plot(wl, res_base, color="tab:purple", linestyle=":", linewidth=1.4, label="Res: ViT")
-        
-        ax_res.set_xlim(395, 905)
-        ax_res.set_ylim(-0.04, 0.04)
-        ax_res.set_yticks([-0.03, 0.0, 0.03])
-        ax_res.grid(True, linestyle="--", alpha=0.4)
-        ax_res.tick_params(labelsize=8)
-        ax_res.set_ylabel("$\\Delta R$", fontsize=8.5)
-        if row_idx == 1:
-            ax_res.set_xlabel("Wavelength (nm)", fontsize=9.0)
-
+    plt.tight_layout()
     spec_path = out_dir / "spectral_signatures.png"
     plt.savefig(spec_path, dpi=300, bbox_inches="tight")
     plt.close()
-    print(f"  Saved Spectral Signatures with Residuals: {spec_path}")
+    print(f"  Saved Classic Spectral Signatures: {spec_path}")
 
     # Copy to paper/ directory
     import shutil

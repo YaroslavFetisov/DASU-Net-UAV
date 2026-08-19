@@ -33,8 +33,12 @@ class DatasetMeta:
 
 
 DATASET_REGISTRY: dict[str, DatasetMeta] = {
-    "samson": DatasetMeta(num_endmembers=3, num_bands=156, spatial_size=95),
-    "apex":   DatasetMeta(num_endmembers=4, num_bands=285, spatial_size=110),
+    "uav_synthetic":   DatasetMeta(num_endmembers=4, num_bands=150, spatial_size=100),
+    "uav_synth":       DatasetMeta(num_endmembers=4, num_bands=150, spatial_size=100),
+    "whu_hi_longkou":  DatasetMeta(num_endmembers=5, num_bands=270, spatial_size=100),
+    "whu_hi":          DatasetMeta(num_endmembers=5, num_bands=270, spatial_size=100),
+    "samson":          DatasetMeta(num_endmembers=3, num_bands=156, spatial_size=95),
+    "apex":            DatasetMeta(num_endmembers=4, num_bands=285, spatial_size=110),
 }
 
 
@@ -196,3 +200,20 @@ class HyperspectralDataset(Dataset):
             f"endmembers={self.P}, "
             f"spatial={self.col}x{self.col})"
         )
+
+
+if __name__ == "__main__":
+    print("Testing HyperspectralDataset with UAV benchmarks...\n")
+    for name in ["uav_synthetic", "whu_hi_longkou"]:
+        ds = HyperspectralDataset(name, data_dir="./data/raw")
+        print(f"  {ds}")
+        cube = ds.get_image_cube()
+        abu = ds.get_abundance_cube()
+        endmem = ds.get_endmembers()
+        assert cube.shape == (1, ds.L, ds.col, ds.col), f"Cube shape mismatch: {cube.shape}"
+        assert abu.shape == (ds.col, ds.col, ds.P), f"Abu shape mismatch: {abu.shape}"
+        assert endmem.shape == (ds.L, ds.P), f"Endmember shape mismatch: {endmem.shape}"
+        print(f"    Cube: {cube.shape}, Abundances: {abu.shape}, Endmembers: {endmem.shape} -> OK")
+
+    print("\nAll UAV dataset loader tests PASSED!")
+

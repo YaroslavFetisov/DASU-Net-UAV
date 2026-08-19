@@ -1,0 +1,39 @@
+# ============================================================
+# DASU-Net — WHU-Hi LongKou UAV Benchmark Configuration
+# ============================================================
+
+seed: 42
+
+dataset:
+  name: "whu_hi_longkou"
+  data_dir: "./data/raw"
+
+model:
+  encoder_type: "swin"
+  decoder_type: "nonlinear"
+  use_dual_attention: true
+  init_method: "vca"
+  patch_size: 5
+  emb_dim_per_endmember: 200
+  transformer_depth: 2
+  num_heads: 8
+  window_size: 5
+  mlp_dim: 12
+  nonlinear_gamma: 0.35
+
+training:
+  epochs: 300
+  learning_rate: 4.0e-3
+  weight_decay: 4.0e-5
+  scheduler_step: 20
+  scheduler_gamma: 0.8
+  grad_clip_norm: 10.0
+  grad_clip_type: 1
+  beta: 5.0e+3
+  gamma: 4.0e-2
+  delta: 1.0e-2
+  lambda_reg: 1.0e-2
+
+logging:
+  print_every: 20
+  save_dir: "./runs"

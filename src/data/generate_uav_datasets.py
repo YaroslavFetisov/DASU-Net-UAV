@@ -72,23 +72,32 @@ def generate_impervious_spectrum(bands: int, wl: np.ndarray) -> np.ndarray:
 
 
 def generate_spatial_abundances(H: int, W: int, P: int, seed: int = 42) -> np.ndarray:
-    """Generate smooth, physically valid abundance maps (H, W, P) satisfying ANC & ASC."""
+    """Generate distinct, physically realistic regional abundance maps (H, W, P) satisfying ANC & ASC."""
     rng = np.random.default_rng(seed)
     raw_maps = np.zeros((H, W, P), dtype=np.float32)
 
-    # Place random Gaussian centers for each endmember material
-    for p in range(P):
-        num_centers = rng.integers(3, 7)
-        grid = np.zeros((H, W), dtype=np.float32)
-        for _ in range(num_centers):
-            cx, cy = rng.integers(0, H), rng.integers(0, W)
-            grid[cx, cy] = rng.uniform(5.0, 15.0)
-        # Apply spatial Gaussian blur to simulate natural ground clusters
-        sigma = rng.uniform(6.0, 12.0)
-        blurred = gaussian_filter(grid, sigma=sigma)
-        raw_maps[:, :, p] = blurred + rng.exponential(0.1, size=(H, W))
+    centers = [
+        (int(H * 0.30), int(W * 0.30)),  # Zone 1: Crops
+        (int(H * 0.30), int(W * 0.75)),  # Zone 2: Soil
+        (int(H * 0.75), int(W * 0.30)),  # Zone 3: Water
+        (int(H * 0.75), int(W * 0.75)),  # Zone 4: Road/Mineral
+        (int(H * 0.50), int(W * 0.50)),  # Zone 5: Canopy
+    ]
 
-    # Softmax along P dimension ensures strict ANC (>=0) and ASC (sum=1)
+    Y_coords, X_coords = np.ogrid[:H, :W]
+    for p in range(P):
+        cy, cx = centers[p % len(centers)]
+        dist_sq = (Y_coords - cy) ** 2 + (X_coords - cx) ** 2
+        blob = np.exp(-dist_sq / (2 * (H * 0.28) ** 2))
+
+        num_sub = rng.integers(2, 4)
+        for _ in range(num_sub):
+            scy, scx = rng.integers(10, H - 10), rng.integers(10, W - 10)
+            s_dist = (Y_coords - scy) ** 2 + (X_coords - scx) ** 2
+            blob += 0.5 * np.exp(-s_dist / (2 * (H * 0.12) ** 2))
+
+        raw_maps[:, :, p] = blob * 6.0
+
     exp_maps = np.exp(raw_maps - np.max(raw_maps, axis=-1, keepdims=True))
     abundances = exp_maps / np.sum(exp_maps, axis=-1, keepdims=True)
     return abundances.astype(np.float32)

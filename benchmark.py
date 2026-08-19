@@ -102,6 +102,8 @@ EXPERIMENTS = [
         "tune_lambda": False,
         "hp_samson": {"lr": 6e-3, "weight_decay": 4e-5, "beta": 5e3, "gamma": 3e-2, "delta": 0.0, "lambda_reg": 0.0},
         "hp_apex":   {"lr": 9e-3, "weight_decay": 4e-5, "beta": 5e3, "gamma": 5e-2, "delta": 0.0, "lambda_reg": 0.0},
+        "hp_uav_synthetic": {"lr": 6e-3, "weight_decay": 4e-5, "beta": 5e3, "gamma": 3e-2, "delta": 0.0, "lambda_reg": 0.0},
+        "hp_whu_hi_longkou": {"lr": 8e-3, "weight_decay": 4e-5, "beta": 5e3, "gamma": 4e-2, "delta": 0.0, "lambda_reg": 0.0},
     },
     {
         "name": "dasunet_sivm",
@@ -415,7 +417,7 @@ def parse_args() -> argparse.Namespace:
                    help="Min loss improvement for plateau detection (default: 1e-5)")
     p.add_argument("--check-every", type=int, default=10,
                    help="Plateau check frequency in epochs (default: 10)")
-    p.add_argument("--datasets", nargs="+", default=["samson", "apex"])
+    p.add_argument("--datasets", nargs="+", default=["uav_synthetic", "whu_hi_longkou"])
     p.add_argument("--runs-dir", type=str, default="runs")
     return p.parse_args()
 

@@ -326,55 +326,87 @@ def generate_publication_figures(results: dict, out_dir: Path):
     P = gt_abu.shape[2]
     em_names = ["Crop Canopy", "Dry Soil", "Water Feature", "Road/Mineral"]
 
-    # --- Figure 1: Qualitative Comparison Combined (Abundances + Spectra) ---
-    fig = plt.figure(figsize=(13.5, 6.0), dpi=300)
-    gs = fig.add_gridspec(3, P + 2, width_ratios=[1]*P + [0.07, 1.9], wspace=0.28, hspace=0.25)
+    # --- Figure 1: Qualitative Comparison Combined (Abundances + Error Maps + Spectra) ---
+    fig = plt.figure(figsize=(14.5, 6.2), dpi=300)
+    gs = fig.add_gridspec(3, P + 3, width_ratios=[1]*P + [0.06, 0.06, 2.1], wspace=0.32, hspace=0.28)
 
-    # Abundance maps subplots
-    rows = [
-        ("Ground Truth", gt_abu),
-        ("Baseline (ViT)", base_abu),
-        ("DASU-Net (Ours)", dasu_abu),
-    ]
+    diff_base = np.abs(base_abu - gt_abu)
+    diff_dasu = np.abs(dasu_abu - gt_abu)
+    max_err = 0.12
 
-    for r_idx, (r_title, maps) in enumerate(rows):
-        for p in range(P):
-            ax = fig.add_subplot(gs[r_idx, p])
-            im = ax.imshow(maps[:, :, p], cmap="viridis", vmin=0.0, vmax=1.0)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            if r_idx == 0:
-                ax.set_title(em_names[p], fontsize=10, fontweight="bold", pad=5)
-            if p == 0:
-                ax.set_ylabel(r_title, fontsize=10, fontweight="bold", labelpad=5)
+    # Row 1: Ground Truth
+    for p in range(P):
+        ax = fig.add_subplot(gs[0, p])
+        im_gt = ax.imshow(gt_abu[:, :, p], cmap="viridis", vmin=0.0, vmax=1.0)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(em_names[p], fontsize=10, fontweight="bold", pad=5)
+        if p == 0:
+            ax.set_ylabel("Ground Truth", fontsize=9.5, fontweight="bold", labelpad=5)
 
-    # Colorbar
-    cax = fig.add_subplot(gs[:, P])
-    cb = plt.colorbar(im, cax=cax)
-    cb.ax.tick_params(labelsize=8)
+    # Row 2: Baseline ViT Error Map
+    for p in range(P):
+        ax = fig.add_subplot(gs[1, p])
+        im_err = ax.imshow(diff_base[:, :, p], cmap="inferno", vmin=0.0, vmax=max_err)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if p == 0:
+            ax.set_ylabel("Error: ViT Base\n$|\\hat{\\mathbf{A}} - \\mathbf{A}_{GT}|$", fontsize=8.5, fontweight="bold", labelpad=5)
+
+    # Row 3: DASU-Net Error Map
+    for p in range(P):
+        ax = fig.add_subplot(gs[2, p])
+        ax.imshow(diff_dasu[:, :, p], cmap="inferno", vmin=0.0, vmax=max_err)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if p == 0:
+            ax.set_ylabel("Error: DASU-Net\n$|\\hat{\\mathbf{A}} - \\mathbf{A}_{GT}|$", fontsize=8.5, fontweight="bold", labelpad=5, color="#005500")
+
+    # Colorbar 1: Abundances [0, 1]
+    cax_abu = fig.add_subplot(gs[0, P])
+    cb_abu = plt.colorbar(im_gt, cax=cax_abu)
+    cb_abu.ax.tick_params(labelsize=7.5)
+    cb_abu.set_label("Fraction", fontsize=8, labelpad=2)
+
+    # Colorbar 2: Error [0, max_err]
+    cax_err = fig.add_subplot(gs[1:, P])
+    cb_err = plt.colorbar(im_err, cax=cax_err)
+    cb_err.ax.tick_params(labelsize=7.5)
+    cb_err.set_label("Absolute Error", fontsize=8, labelpad=2)
 
     # Spectra plot (Right column)
-    ax_spec = fig.add_subplot(gs[:, P+1])
+    ax_spec = fig.add_subplot(gs[:, P+2])
     wl = np.linspace(400, 900, 150)
     true_em = uav_res["dasunet_sivm"]["true_endmem"]      # (L, P)
     base_em = uav_res["baseline"]["est_endmem"]          # (L, P)
     dasu_em = uav_res["dasunet_sivm"]["est_endmem"]      # (L, P)
-    colors = ["#2ca02c", "#d62728", "#1f77b4", "#7f7f7f"]
+    colors = ["#2ca02c", "#d62728", "#1f77b4", "#555555"]
 
     for p in range(P):
-        ax_spec.plot(wl, true_em[:, p], label=f"{em_names[p]} (GT)",
-                     color=colors[p], linestyle="-", linewidth=2.0, alpha=0.9)
-        ax_spec.plot(wl, dasu_em[:, p], label=f"{em_names[p]} (Ours)",
-                     color=colors[p], linestyle="--", linewidth=1.8)
-        ax_spec.plot(wl, base_em[:, p], label=f"{em_names[p]} (ViT)",
-                     color=colors[p], linestyle=":", linewidth=1.2, alpha=0.7)
+        ax_spec.plot(wl, true_em[:, p], color=colors[p], linestyle="-", linewidth=2.2, alpha=0.95)
+        ax_spec.plot(wl, dasu_em[:, p], color=colors[p], linestyle="--", linewidth=1.8, alpha=0.95)
+        ax_spec.plot(wl, base_em[:, p], color=colors[p], linestyle=":", linewidth=1.3, alpha=0.75)
 
-    ax_spec.set_title("Extracted Endmember Reflectance", fontsize=11, fontweight="bold")
-    ax_spec.set_xlabel("Wavelength (nm)", fontsize=9)
-    ax_spec.set_ylabel("Reflectance", fontsize=9)
-    ax_spec.grid(True, linestyle="--", alpha=0.5)
-    ax_spec.legend(loc="upper right", fontsize=7, ncol=2, framealpha=0.9)
-    ax_spec.set_ylim(-0.02, 1.0)
+    ax_spec.set_title("Extracted Endmember Reflectance", fontsize=11, fontweight="bold", pad=8)
+    ax_spec.set_xlabel("Wavelength (nm)", fontsize=9.5)
+    ax_spec.set_ylabel("Reflectance", fontsize=9.5)
+    ax_spec.set_xlim(395, 905)
+    ax_spec.set_ylim(-0.02, 0.75)
+    ax_spec.set_yticks(np.arange(0.0, 0.8, 0.1))
+    ax_spec.grid(True, linestyle="--", alpha=0.45)
+
+    # Create custom clean 2-section legend
+    from matplotlib.lines import Line2D
+    custom_lines = [
+        Line2D([0], [0], color=colors[0], lw=2.0, label="Crop Canopy"),
+        Line2D([0], [0], color=colors[1], lw=2.0, label="Dry Soil"),
+        Line2D([0], [0], color=colors[2], lw=2.0, label="Water Feature"),
+        Line2D([0], [0], color=colors[3], lw=2.0, label="Road/Mineral"),
+        Line2D([0], [0], color="black", lw=2.0, linestyle="-", label="Ground Truth"),
+        Line2D([0], [0], color="black", lw=1.8, linestyle="--", label="DASU-Net (Ours)"),
+        Line2D([0], [0], color="black", lw=1.3, linestyle=":", label="Baseline (ViT)"),
+    ]
+    ax_spec.legend(handles=custom_lines, loc="upper left", fontsize=7.5, ncol=2, framealpha=0.92, edgecolor="#cccccc")
 
     fig_path = out_dir / "qualitative_comparison_combined.png"
     plt.savefig(fig_path, dpi=300, bbox_inches="tight")

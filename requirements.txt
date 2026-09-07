@@ -7,3 +7,4 @@ einops>=0.6.0
 timm>=0.9.0
 PyYAML>=6.0
 scikit-learn>=1.2.0
+optuna>=3.0.0

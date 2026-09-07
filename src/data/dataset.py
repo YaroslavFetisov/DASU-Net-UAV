@@ -92,10 +92,18 @@ class HyperspectralDataset(Dataset):
         # --- Load .mat file -----------------------------------------------
         mat_path = Path(data_dir) / f"{dataset_name}_dataset.mat"
         if not mat_path.exists():
-            raise FileNotFoundError(
-                f"Dataset file not found: {mat_path}\n"
-                f"Download it and place into '{data_dir}/'."
-            )
+            if dataset_name in ("uav_synthetic", "uav_synth", "whu_hi_longkou", "whu_hi"):
+                from .generate_uav_datasets import build_uav_synthetic_benchmark, build_whu_hi_longkou_benchmark
+                Path(data_dir).mkdir(parents=True, exist_ok=True)
+                if dataset_name in ("uav_synthetic", "uav_synth"):
+                    build_uav_synthetic_benchmark(Path(data_dir))
+                else:
+                    build_whu_hi_longkou_benchmark(Path(data_dir))
+            else:
+                raise FileNotFoundError(
+                    f"Dataset file not found: {mat_path}\n"
+                    f"Download it and place into '{data_dir}/'."
+                )
 
         data = sio.loadmat(str(mat_path))
 

@@ -3,7 +3,7 @@
 [![IEEE APUAVD 2026](https://img.shields.io/badge/IEEE_APUAVD-2026_Submission-blue?style=for-the-badge&logo=ieee)](http://apuavd.ieee.org.ua/)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Optuna](https://img.shields.io/badge/Optuna-HPO_Tuned-4169E1?style=for-the-badge&logo=optuna)](https://optuna.org/)
+[![Optuna](https://img.shields.io/badge/Optuna-HPO-4169E1?style=for-the-badge&logo=optuna)](https://optuna.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 **DASU-Net-UAV** (Dual-Attention Swin U-Net for UAV Hyperspectral Remote Sensing) is an autonomous, lightweight deep AutoEncoder architecture designed for **Blind Hyperspectral Unmixing (HSU)** on Unmanned Aerial Vehicle (UAV) platforms.
@@ -44,45 +44,75 @@ However, onboard processing of UAV hyperspectral cubes presents unique physical 
 
 ---
 
+## 🗂️ Benchmarks
+
+Both benchmarks are simulated by [`src/data/generate_uav_datasets.py`](src/data/generate_uav_datasets.py), so abundance and endmember ground truth is known exactly. The generator is deterministic: missing `.mat` files are recreated bit-identically in `data/raw/` on first use.
+
+| Key | Benchmark | Bands | Endmembers | Size | Mixing & degradations |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| `uav_synthetic` | UAV Flight Synthetic | 150 (400–900 nm) | 4: crop, soil, water, road | 100 × 100 | PPNMM (γ = 0.45), motion blur, 30 dB noise |
+| `whu_hi_longkou` | LongKou-like synthetic | 270 (400–1000 nm) | 5: crop, canopy, soil, water, road | 100 × 100 | PPNMM (γ = 0.35), motion blur, 32 dB noise |
+
+Endmember spectra are analytic reflectance models. The `whu_hi_longkou` benchmark (the *LongKou-configured benchmark* in the APUAVD-2026 paper) follows the band configuration of the WHU-Hi LongKou Headwall Nano-Hyperspec acquisition but is fully simulated and contains no pixels of the original image; the original WHU-Hi LongKou scene is distributed with a land-cover classification map rather than abundance ground truth.
+
+---
+
 ## 📊 Experimental Results
 
-### 1. Quantitative Benchmark Comparison (APUAVD-2026 Table I)
+All numbers were produced with a single command on an NVIDIA GeForce RTX 4070 Ti (PyTorch 2.5.1, CUDA 11.8):
 
-| Dataset | Method | Init | Abundance RMSE $\downarrow$ | Spectral SAD (rad) $\downarrow$ |
-| :--- | :--- | :---: | :---: | :---: |
-| **UAV Synthetic** | ViT Baseline | VCA | 0.0283 | 0.0177 |
-| | **DASU-Net** | SiVM | 0.0145 | 0.0155 |
-| | **DASU-Net** | **VCA** | **0.0120** | **0.0132** |
-| **WHU-Hi LongKou** | ViT Baseline | VCA | 0.0807 | 0.0153 |
-| | **DASU-Net** | SiVM | 0.0607 | 0.0134 |
-| | **DASU-Net** | **VCA** | **0.0498** | **0.0121** |
+```bash
+python run_uav_experiments.py --seeds 42 43 44 45 46
+```
 
-### 2. Incremental Architectural Ablation Study (APUAVD-2026 Table II)
+The complete output, including every per-seed value, is stored in [`results/all_results.json`](results/all_results.json). Training on CUDA is not bit-wise deterministic, so repeated runs give slightly different numbers; each table therefore lists the run with the script's default seed (42) next to the mean ± std over the five seeds.
 
-Evaluated on the UAV Synthetic Benchmark ($100 \times 100$ pixels, 150 bands, $P=4$ endmembers):
+### 1. Quantitative Benchmark Comparison
 
-| # | Configuration | RMSE $\downarrow$ | SAD (rad) $\downarrow$ | Error Reduction |
-| :-: | :--- | :---: | :---: | :---: |
-| (1) | ViT + Linear Decoder (Baseline) | 0.0250 | 0.0147 | Baseline |
-| (2) | + Swin Transformer Encoder | 0.0291 | 0.0164 | Receptive field localized |
-| (3) | + Dual Attention (Spatial + Spectral) | 0.0280 | 0.0152 | Spectral covariance modeled |
-| (4) | + U-Net Skip Abundance Decoder | 0.0272 | 0.0159 | Sharp boundary preservation |
-| (5) | + PPNMM Non-Linear Decoder (**Full DASU-Net**) | **0.0132** | **0.0150** | **>50% Error Drop** |
+| Benchmark | Method | Init | RMSE ↓ (seed 42) | SAD (rad) ↓ (seed 42) | RMSE ↓ (mean ± std) | SAD (rad) ↓ (mean ± std) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **UAV Synthetic** | ViT baseline | VCA | 0.0263 | 0.0174 | 0.0294 ± 0.0020 | 0.0171 ± 0.0011 |
+| | DASU-Net | SiVM | 0.0136 | 0.0150 | 0.0127 ± 0.0013 | 0.0145 ± 0.0004 |
+| | DASU-Net | VCA | 0.0115 | 0.0134 | 0.0147 ± 0.0037 | 0.0154 ± 0.0018 |
+| **LongKou-like** | ViT baseline | VCA | 0.0805 | 0.0142 | 0.0940 ± 0.0092 | 0.0216 ± 0.0048 |
+| | DASU-Net | SiVM | 0.0630 | 0.0130 | 0.0804 ± 0.0162 | 0.0145 ± 0.0038 |
+| | DASU-Net | VCA | 0.0502 | 0.0114 | 0.0807 ± 0.0286 | 0.0166 ± 0.0070 |
 
-### 3. SWaP On-Board Hardware Profiling (APUAVD-2026 Table III)
+On average over the five seeds DASU-Net lowers abundance RMSE by 57 % (SiVM) / 50 % (VCA) on UAV Synthetic and by 14 % (SiVM / VCA) on the LongKou-like benchmark, where the result varies strongly between seeds.
 
-Measured on CUDA-enabled drone edge compute setup ($100 \times 100$ spatial resolution):
+The ViT baseline re-implements the DeepTrans-HSU ViT encoder with a linear decoder (`encoder_type="vit"`, `decoder_type="linear"` in [`src/models/unmixer.py`](src/models/unmixer.py)) and uses the same skip-connected abundance decoder as DASU-Net.
 
-| Metric | ViT Baseline | DASU-Net (Ours) | Impact / Advantage |
-| :--- | :---: | :---: | :---: |
-| **Parameters** | 25.54 M | **17.18 M** | **-32.7% lighter** |
-| **Inference Latency** | 1.79 ms | 3.21 ms | Low edge latency |
-| **Throughput (FPS)** | 560.1 | **311.5** | **Real-Time Onboard Capable** |
-| **GPU Memory** | 114.3 MB | 108.6 MB | Minimal footprint |
+### 2. Incremental Architectural Ablation Study
+
+UAV Synthetic benchmark; all five configurations share the same optimiser settings and 250-epoch budget (see `run_ablation_study` in [`run_uav_experiments.py`](run_uav_experiments.py)).
+
+| # | Configuration | Change in the code w.r.t. the previous row | RMSE ↓ (seed 42) | SAD (rad) ↓ (seed 42) | RMSE ↓ (mean ± std) | SAD (rad) ↓ (mean ± std) |
+| :-: | :--- | :--- | :---: | :---: | :---: | :---: |
+| (1) | ViT + Linear Decoder (Baseline) | ViT encoder, linear decoder, VCA init | 0.0257 | 0.0144 | 0.0297 ± 0.0030 | 0.0172 ± 0.0024 |
+| (2) | + Swin Transformer Encoder | ViT → Swin encoder | 0.0303 | 0.0163 | 0.0298 ± 0.0029 | 0.0168 ± 0.0020 |
+| (3) | + Dual Attention (Spatial + XCA) | dual-attention block on; MinVol / entropy weights 0 → 5e-4 | 0.0289 | 0.0153 | 0.0297 ± 0.0024 | 0.0172 ± 0.0019 |
+| (4) | + U-Net Skip Decoder | VCA → SiVM init (the skip-connected abundance decoder is used in every row) | 0.0264 | 0.0150 | 0.0306 ± 0.0036 | 0.0181 ± 0.0022 |
+| (5) | + PPNMM Decoder (**Full DASU-Net**) | linear → PPNMM non-linear decoder | 0.0123 | 0.0145 | 0.0153 ± 0.0040 | 0.0157 ± 0.0017 |
+
+### 3. Hardware Profiling
+
+One 270-band 100 × 100 cube (P = 5), batch size 1, `torch.no_grad()`, 20 warm-up passes; latency is the median of 5 × 100 timed passes, and peak memory is the PyTorch-allocated memory (input, weights, activations) with only that model loaded.
+
+| Metric | ViT baseline | DASU-Net |
+| :--- | :---: | :---: |
+| **Parameters** | 25.54 M | **17.18 M** (−32.7 %) |
+| **GFLOPs per cube** | 6.56 | **4.77** |
+| **Inference Latency** | 1.75 ms | 3.24 ms |
+| **Throughput (FPS)** | 570.8 | 309.0 |
+| **Peak GPU Memory** | 136.6 MB | 122.8 MB |
+
+Measured on a desktop RTX 4070 Ti; embedded UAV computers such as NVIDIA Jetson modules are slower. GFLOPs were counted on the CPU with `torch.utils.flop_counter.FlopCounterMode` for the same input (convolutions and matrix products); the PPNMM decoder accounts for 0.08 of DASU-Net's 4.77 GFLOPs.
 
 ---
 
 ## 🖼️ Qualitative Evaluation
+
+Example output of `run_uav_experiments.py` on the UAV Synthetic benchmark (ground truth, ViT baseline and DASU-Net with SiVM initialization).
 
 ### Fractional Abundance Estimation
 ![Abundance Comparison](assets/abundance_comparison.png)
@@ -117,15 +147,15 @@ pip install -r requirements.txt
 
 ## 💻 Usage & Reproduction Workflows
 
-### 0. Complete APUAVD-2026 Paper Reproduction Suite (`run_uav_experiments.py`)
-Reproduces all benchmark evaluations, the 5-stage ablation study, SWaP onboard hardware latency and parameter profiling, and generates publication-grade 300 DPI figures in a single command:
+### 0. Experiment Suite (`run_uav_experiments.py`)
+Trains the ViT baseline and DASU-Net (SiVM / VCA) on both benchmarks, runs the 5-step ablation study and the hardware profiling, then writes `runs/experiments_uav/all_results.json` and two 300 DPI figures (about 4 minutes for five seeds on an RTX 4070 Ti):
 ```bash
-python run_uav_experiments.py
+python run_uav_experiments.py --seeds 42 43 44 45 46
 ```
-*(Datasets are automatically generated if not present on disk).*
+Hyperparameters of this script are fixed in the code. `--out-dir` changes the output folder and `--sync-paper-dir <dir>` additionally copies the figures into an existing directory. Missing benchmark cubes are generated automatically (see the Benchmarks section above).
 
 ### 1. End-to-End Automated Scientific Benchmark (`benchmark.py`)
-Executes automated Bayesian hyperparameter optimization (Optuna TPE), followed by full convergence training with plateau early-stopping and Hungarian matching evaluation:
+Executes automated Bayesian hyperparameter optimization (Optuna TPE), followed by full convergence training with plateau early-stopping and Hungarian matching evaluation. Results are written to `runs/benchmark/`, which is cleared at start-up:
 ```bash
 python benchmark.py --tune-trials 100 --tune-epochs 150 --max-epochs 1000 --patience 60
 ```
@@ -180,20 +210,22 @@ DASU-Net-UAV/
 │   ├── exp_nonlinear.yaml    # PPNMM non-linear decoder config
 │   └── exp_full.yaml         # Full DASU-Net configuration
 ├── data/
-│   ├── raw/                  # Hyperspectral cubes (*.mat, auto-generated if missing)
+│   ├── raw/                  # Synthetic benchmark cubes (*.mat, generated on first use)
 │   └── processed/            # Preprocessed dataset caches
 ├── notebooks/                # Interactive UAV analysis and evaluation notebooks
 │   ├── 01_uav_data_and_eda.ipynb
 │   ├── 02_uav_training_and_benchmark.ipynb
 │   └── 03_uav_qualitative_and_error_maps.ipynb
+├── results/
+│   └── all_results.json      # Output of the run reported above (all seeds)
 ├── src/
 │   ├── core/                 # Loss functions, initialization (SiVM/VCA), metrics
-│   ├── data/                 # HSI Dataset loaders and UAV synthetic benchmark generator
+│   ├── data/                 # HSI Dataset loaders and synthetic UAV benchmark generator
 │   ├── models/               # Encoders, Decoders, and DASUNet architecture
 │   └── utils/                # YAML parser, logger, and visualization utilities
 ├── benchmark.py              # Automated HPO & benchmark orchestration script
 ├── main.py                   # Single-run model training script
-├── run_uav_experiments.py    # Complete APUAVD-2026 paper reproduction script
+├── run_uav_experiments.py    # Benchmark, ablation and profiling suite
 ├── tune.py                   # Optuna hyperparameter optimization script
 ├── requirements.txt          # Python dependencies
 ├── LICENSE                   # MIT License
@@ -209,12 +241,11 @@ If you use this codebase or model in your research, please cite our conference p
 ```bibtex
 @inproceedings{fetisov2026dasunet,
   author    = {Fetisov, Yaroslav},
-  title     = {{DASU-Net}: Dual-Attention Swin {U-Net} for Blind Hyperspectral Unmixing in {UAV} Remote Sensing},
+  title     = {{DASU-Net}: Dual-Attention Swin {U-Net} for Non-Linear Hyperspectral Unmixing in {UAV} Remote Sensing},
   booktitle = {Proc. 2026 IEEE 8th International Conference "Actual Problems of Unmanned Aerial Vehicles Development" (APUAVD)},
   year      = {2026},
-  pages     = {1--6},
   address   = {Kyiv, Ukraine},
-  publisher = {IEEE}
+  note      = {Submitted}
 }
 ```
 

@@ -1,12 +1,15 @@
 """
 HyperspectralDataset — PyTorch Dataset for hyperspectral .mat files.
 
-Supported datasets: Samson, Apex.
+Supported datasets: uav_synthetic, whu_hi_longkou (both synthetic, produced by
+generate_uav_datasets.py; the latter is a LongKou-like surrogate, not the real
+WHU-Hi LongKou image), Samson, Apex.
 Each .mat file contains:
     Y  — (L, N) hyperspectral image (L spectral bands, N = H*W pixels)
     A  — (P, N) abundance maps (P — number of endmembers)
     M  — (L, P) ground-truth endmembers
-    M1 — (L, P) initial weights (VCA-initialization)
+    M1 — (L, P) initial weights (for the synthetic benchmarks: a noisy copy of M;
+         not used by main.py / tune.py / benchmark.py / run_uav_experiments.py)
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ class DatasetMeta:
 
 
 DATASET_REGISTRY: dict[str, DatasetMeta] = {
+    # Synthetic benchmarks (src/data/generate_uav_datasets.py)
     "uav_synthetic":   DatasetMeta(num_endmembers=4, num_bands=150, spatial_size=100),
     "uav_synth":       DatasetMeta(num_endmembers=4, num_bands=150, spatial_size=100),
     "whu_hi_longkou":  DatasetMeta(num_endmembers=5, num_bands=270, spatial_size=100),
@@ -94,6 +98,7 @@ class HyperspectralDataset(Dataset):
         if not mat_path.exists():
             if dataset_name in ("uav_synthetic", "uav_synth", "whu_hi_longkou", "whu_hi"):
                 from .generate_uav_datasets import build_uav_synthetic_benchmark, build_whu_hi_longkou_benchmark
+                print(f"'{mat_path}' not found -> generating the SYNTHETIC '{dataset_name}' benchmark")
                 Path(data_dir).mkdir(parents=True, exist_ok=True)
                 if dataset_name in ("uav_synthetic", "uav_synth"):
                     build_uav_synthetic_benchmark(Path(data_dir))

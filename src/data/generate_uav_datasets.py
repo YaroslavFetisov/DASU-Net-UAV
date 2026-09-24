@@ -1,10 +1,15 @@
 """
-UAV Hyperspectral Benchmark Generator.
-Generates physically realistic UAV benchmarks for Blind Hyperspectral Unmixing:
+Synthetic UAV Hyperspectral Benchmark Generator.
+Generates the two SYNTHETIC benchmarks used by run_uav_experiments.py:
 1. 'uav_synthetic_dataset.mat': 150 bands, 4 endmembers, 100x100 spatial grid,
    PPNMM non-linear multi-bounce scattering, UAV flight motion blur, 30 dB SNR noise.
-2. 'whu_hi_longkou_dataset.mat': 270 bands (Headwall Nano-Hyperspec VNIR 400-1000 nm),
-   5 endmembers, 100x100 spatial grid, agricultural scene with crops, canopy, soil, water, road.
+2. 'whu_hi_longkou_dataset.mat': LongKou-like synthetic surrogate that only borrows the
+   WHU-Hi LongKou sensor setup (270 bands, Headwall Nano-Hyperspec VNIR 400-1000 nm);
+   5 endmembers, 100x100 spatial grid, PPNMM mixing, blur and 32 dB SNR noise.
+   It contains no pixels of the real WHU-Hi LongKou image.
+
+Endmember spectra are analytic reflectance models (not measured library spectra), and
+abundances are smooth Gaussian fields, so ground truth is known exactly.
 """
 
 from pathlib import Path
@@ -170,7 +175,8 @@ def build_uav_synthetic_benchmark(out_dir: Path) -> Path:
     Y_blurred = apply_uav_motion_blur(Y_clean, blur_len=2, angle_deg=20.0)
     Y_noisy = add_sensor_noise(Y_blurred, snr_db=30.0, seed=100)
 
-    # 6. VCA initialization simulation (realistic starting point with slight noise)
+    # 6. 'M1' field of the .mat format: noisy copy of the ground-truth endmembers.
+    #    Not used by the training scripts, which initialise from Y via VCA / SiVM.
     rng = np.random.default_rng(2026)
     M1 = np.clip(E + rng.normal(0, 0.03, size=E.shape), 0.01, 0.95).astype(np.float32)
 
@@ -189,11 +195,15 @@ def build_uav_synthetic_benchmark(out_dir: Path) -> Path:
 
 
 def build_whu_hi_longkou_benchmark(out_dir: Path) -> Path:
-    """Build WHU-Hi LongKou UAV Benchmark (270 bands Headwall Nano-Hyperspec, 5 endmembers, 100x100)."""
+    """Build the synthetic LongKou-like surrogate (270 bands, 5 endmembers, 100x100).
+
+    Only the band count and spectral range follow the WHU-Hi LongKou acquisition; the
+    cube itself is simulated and contains no pixels of the real WHU-Hi LongKou image.
+    """
     L, P, H, W = 270, 5, 100, 100
     wl = np.linspace(400, 1000, L)
 
-    # 1. 5 distinct UAV endmembers for LongKou agricultural flight
+    # 1. 5 analytic endmember spectra for an agricultural scene
     E = np.zeros((L, P), dtype=np.float32)
     E[:, 0] = generate_vegetation_spectrum(L, wl)   # Crop (Corn/Soybean)
     E[:, 1] = generate_canopy_spectrum(L, wl)       # Broadleaf Canopy / Trees
@@ -221,7 +231,7 @@ def build_whu_hi_longkou_benchmark(out_dir: Path) -> Path:
     Y_blurred = apply_uav_motion_blur(Y_clean, blur_len=1, angle_deg=10.0)
     Y_noisy = add_sensor_noise(Y_blurred, snr_db=32.0, seed=777)
 
-    # 5. VCA initialization
+    # 5. 'M1' field: noisy copy of the ground-truth endmembers (unused by training scripts)
     rng = np.random.default_rng(999)
     M1 = np.clip(E + rng.normal(0, 0.025, size=E.shape), 0.01, 0.95).astype(np.float32)
 
@@ -234,7 +244,8 @@ def build_whu_hi_longkou_benchmark(out_dir: Path) -> Path:
         "M1": M1.astype(np.float32),
         "wavelengths": wl.astype(np.float32),
     })
-    print(f"Generated WHU-Hi LongKou UAV Benchmark: {out_path} (L={L}, P={P}, {H}x{W})")
+    print(f"Generated synthetic LongKou-like benchmark (not the real WHU-Hi LongKou image): "
+          f"{out_path} (L={L}, P={P}, {H}x{W})")
     return out_path
 
 

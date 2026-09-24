@@ -1,16 +1,25 @@
 """
-DASU-Net-UAV Comprehensive Scientific Experiment & Profiling Runner.
+DASU-Net-UAV Experiment & Profiling Runner.
 Executes:
-1. Benchmark on UAV datasets (uav_synthetic and whu_hi_longkou) for Baseline vs DASU-Net (SiVM & VCA).
+1. Benchmark on the two synthetic UAV benchmarks (uav_synthetic and the LongKou-like
+   surrogate whu_hi_longkou) for Baseline vs DASU-Net (SiVM & VCA).
 2. 5-step Ablation Study on UAV Synthetic Benchmark.
-3. On-board UAV Hardware Profiling (Latency, FPS, Memory, Parameters).
-4. Generates 300 DPI publication-ready figures for IEEE APUAVD 2026.
+3. Hardware Profiling (parameters, latency, FPS, peak GPU memory per model).
+4. Generates 300 DPI figures (abundance / error maps and endmember spectra).
+
+Training on CUDA is not bit-wise deterministic, so repeated runs with the same seed
+give slightly different metrics. Pass several seeds to report mean +/- std:
+
+    python run_uav_experiments.py --seeds 42 43 44 45 46
 """
 
 from pathlib import Path
+import argparse
+import gc
+import platform
+import shutil
 import time
 import json
-import csv
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -24,6 +33,12 @@ from src.core.losses import TotalLoss
 from src.core.metrics import compute_rmse, compute_sad, match_endmembers
 
 SEED = 42
+BENCHMARK_DATASETS = ["uav_synthetic", "whu_hi_longkou"]
+BENCHMARK_METHODS = ["baseline", "dasunet_sivm", "dasunet_vca"]
+
+# Input used for profiling: one 270-band 100x100 cube, 5 endmembers
+PROFILE_SHAPE = dict(num_endmembers=5, num_bands=270, spatial_size=100)
+
 
 def set_seed(seed=SEED):
     np.random.seed(seed)
@@ -42,8 +57,9 @@ def train_model(
     delta: float = 1e-2,
     lambda_reg: float = 1e-2,
     patience: int = 50,
+    seed: int = SEED,
 ):
-    set_seed(SEED)
+    set_seed(seed)
     img_cube = dataset.get_image_cube()
     clipper = model.get_clipper()
 
@@ -117,16 +133,15 @@ def train_model(
     }
 
 
-def run_benchmarks(device: torch.device, out_dir: Path):
+def run_benchmarks(device: torch.device, seed: int = SEED):
     """Run full benchmark on both UAV datasets."""
     print("\n" + "="*65)
     print("  1. RUNNING UAV BENCHMARK EVALUATIONS")
     print("="*65)
 
-    datasets = ["uav_synthetic", "whu_hi_longkou"]
     results = {}
 
-    for ds_name in datasets:
+    for ds_name in BENCHMARK_DATASETS:
         print(f"\n---> Dataset: {ds_name}")
         ds = HyperspectralDataset(ds_name, data_dir="./data/raw", device=device)
         ds_res = {}
@@ -139,7 +154,7 @@ def run_benchmarks(device: torch.device, out_dir: Path):
         ).to(device)
         base_model.apply(base_model.weights_init)
         base_model.init_decoder_weights(ds.get_image_cube(), method="vca")
-        res_base = train_model(base_model, ds, device, epochs=200, lr=6e-3, delta=0.0, lambda_reg=0.0)
+        res_base = train_model(base_model, ds, device, epochs=200, lr=6e-3, delta=0.0, lambda_reg=0.0, seed=seed)
         ds_res["baseline"] = res_base
         print(f"    Baseline: RMSE = {res_base['rmse_mean']:.4f}, SAD = {res_base['sad_mean']:.4f}")
 
@@ -152,7 +167,7 @@ def run_benchmarks(device: torch.device, out_dir: Path):
         ).to(device)
         dasu_sivm.apply(dasu_sivm.weights_init)
         dasu_sivm.init_decoder_weights(ds.get_image_cube(), method="sivm")
-        res_sivm = train_model(dasu_sivm, ds, device, epochs=300, lr=4e-3, beta=2500, gamma=0.015, delta=5e-4, lambda_reg=5e-4)
+        res_sivm = train_model(dasu_sivm, ds, device, epochs=300, lr=4e-3, beta=2500, gamma=0.015, delta=5e-4, lambda_reg=5e-4, seed=seed)
         ds_res["dasunet_sivm"] = res_sivm
         print(f"    DASU-Net + SiVM: RMSE = {res_sivm['rmse_mean']:.4f}, SAD = {res_sivm['sad_mean']:.4f}")
 
@@ -165,7 +180,7 @@ def run_benchmarks(device: torch.device, out_dir: Path):
         ).to(device)
         dasu_vca.apply(dasu_vca.weights_init)
         dasu_vca.init_decoder_weights(ds.get_image_cube(), method="vca")
-        res_vca = train_model(dasu_vca, ds, device, epochs=300, lr=4e-3, beta=2500, gamma=0.015, delta=5e-4, lambda_reg=5e-4)
+        res_vca = train_model(dasu_vca, ds, device, epochs=300, lr=4e-3, beta=2500, gamma=0.015, delta=5e-4, lambda_reg=5e-4, seed=seed)
         ds_res["dasunet_vca"] = res_vca
         print(f"    DASU-Net + VCA:  RMSE = {res_vca['rmse_mean']:.4f}, SAD = {res_vca['sad_mean']:.4f}")
 
@@ -174,23 +189,31 @@ def run_benchmarks(device: torch.device, out_dir: Path):
     return results
 
 
-def run_ablation_study(device: torch.device):
+def run_ablation_study(device: torch.device, seed: int = SEED):
     """Run progressive ablation on UAV Synthetic Benchmark."""
     print("\n" + "="*65)
     print("  2. RUNNING ABLATION STUDY (UAV Synthetic Benchmark)")
     print("="*65)
 
     ds = HyperspectralDataset("uav_synthetic", data_dir="./data/raw", device=device)
+    # (label, row name in the APUAVD-2026 manuscript, model kwargs, init, delta, lambda_reg)
     ablation_cfgs = [
-        ("ViT + Linear (Baseline)", dict(encoder_type="vit", decoder_type="linear", use_dual_attention=False), "vca", 0.0, 0.0),
-        ("+ Swin Encoder",          dict(encoder_type="swin", decoder_type="linear", use_dual_attention=False), "vca", 0.0, 0.0),
-        ("+ Dual Attention",        dict(encoder_type="swin", decoder_type="linear", use_dual_attention=True), "vca", 5e-4, 5e-4),
-        ("+ U-Net Skip Decoder",    dict(encoder_type="swin", decoder_type="linear", use_dual_attention=True), "sivm", 5e-4, 5e-4),
-        ("+ PPNMM (Full DASU-Net)", dict(encoder_type="swin", decoder_type="nonlinear", use_dual_attention=True, nonlinear_gamma=0.45), "sivm", 5e-4, 5e-4),
+        ("ViT + Linear (Baseline)", "(1) ViT + Linear Decoder (Baseline)",
+         dict(encoder_type="vit", decoder_type="linear", use_dual_attention=False), "vca", 0.0, 0.0),
+        ("+ Swin Encoder", "(2) + Swin Transformer Encoder",
+         dict(encoder_type="swin", decoder_type="linear", use_dual_attention=False), "vca", 0.0, 0.0),
+        ("+ Dual Attention (+ MinVol/entropy terms)", "(3) + Dual Attention (Spatial + XCA)",
+         dict(encoder_type="swin", decoder_type="linear", use_dual_attention=True), "vca", 5e-4, 5e-4),
+        # Same architecture as the previous row: the skip-connected abundance decoder is
+        # part of every configuration, only the endmember initialisation changes.
+        ("+ SiVM Init", "(4) + U-Net Skip Decoder",
+         dict(encoder_type="swin", decoder_type="linear", use_dual_attention=True), "sivm", 5e-4, 5e-4),
+        ("+ PPNMM (Full DASU-Net)", "(5) + PPNMM Decoder (Full DASU-Net)",
+         dict(encoder_type="swin", decoder_type="nonlinear", use_dual_attention=True, nonlinear_gamma=0.45), "sivm", 5e-4, 5e-4),
     ]
 
     ablation_results = []
-    for name, m_kwargs, init_m, delta, lam in ablation_cfgs:
+    for name, manuscript_row, m_kwargs, init_m, delta, lam in ablation_cfgs:
         print(f"  Testing config: {name}...")
         model = DASUNet(
             num_endmembers=ds.P, num_bands=ds.L, spatial_size=ds.col,
@@ -198,10 +221,11 @@ def run_ablation_study(device: torch.device):
         ).to(device)
         model.apply(model.weights_init)
         model.init_decoder_weights(ds.get_image_cube(), method=init_m)
-        res = train_model(model, ds, device, epochs=250, lr=4e-3, beta=2500, gamma=0.015, delta=delta, lambda_reg=lam)
+        res = train_model(model, ds, device, epochs=250, lr=4e-3, beta=2500, gamma=0.015, delta=delta, lambda_reg=lam, seed=seed)
         print(f"    -> RMSE: {res['rmse_mean']:.4f}, SAD: {res['sad_mean']:.4f}")
         ablation_results.append({
             "configuration": name,
+            "manuscript_row": manuscript_row,
             "rmse": res['rmse_mean'],
             "sad": res['sad_mean'],
             "epochs": res['epochs']
@@ -210,110 +234,168 @@ def run_ablation_study(device: torch.device):
     return ablation_results
 
 
-def run_hardware_profiling(device: torch.device):
-    """Profile latency, FPS, memory, parameters for UAV onboard deployment."""
-    print("\n" + "="*65)
-    print("  3. RUNNING ON-BOARD UAV HARDWARE PROFILING")
-    print("="*65)
+def _profile_model(model_kwargs: dict, device: torch.device,
+                   warmup: int = 20, iters: int = 100, repeats: int = 5) -> dict:
+    """Profile one model in isolation: parameters, median latency, peak GPU memory."""
+    cuda = device.type == "cuda"
+    gc.collect()
+    if cuda:
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats(device)
+        mem_before = torch.cuda.memory_allocated(device)
 
-    L, P, H, W = 270, 5, 100, 100
-    dummy_input = torch.randn(1, L, H, W, device=device)
+    P, L, S = PROFILE_SHAPE["num_endmembers"], PROFILE_SHAPE["num_bands"], PROFILE_SHAPE["spatial_size"]
+    dummy_input = torch.randn(1, L, S, S, device=device)
+    model = DASUNet(num_endmembers=P, num_bands=L, spatial_size=S, **model_kwargs).to(device)
+    model.eval()
+    params = sum(p.numel() for p in model.parameters())
 
-    # 1. Baseline ViT
-    vit_model = DASUNet(
-        num_endmembers=P, num_bands=L, spatial_size=H,
-        encoder_type="vit", decoder_type="linear", use_dual_attention=False
-    ).to(device)
-    vit_params = sum(p.numel() for p in vit_model.parameters())
-
-    # 2. DASU-Net
-    dasu_model = DASUNet(
-        num_endmembers=P, num_bands=L, spatial_size=H,
-        encoder_type="swin", decoder_type="nonlinear", use_dual_attention=True
-    ).to(device)
-    dasu_params = sum(p.numel() for p in dasu_model.parameters())
-
-    # Warmup
-    vit_model.eval()
-    dasu_model.eval()
+    timings = []
     with torch.no_grad():
-        for _ in range(15):
-            _ = vit_model(dummy_input)
-            _ = dasu_model(dummy_input)
+        for _ in range(warmup):
+            _ = model(dummy_input)
 
-    # Benchmark ViT latency
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
-        with torch.no_grad():
-            for _ in range(100):
-                _ = vit_model(dummy_input)
-        end_event.record()
-        torch.cuda.synchronize()
-        vit_lat = start_event.elapsed_time(end_event) / 100.0  # ms
-    else:
-        t0 = time.time()
-        with torch.no_grad():
-            for _ in range(50):
-                _ = vit_model(dummy_input)
-        vit_lat = (time.time() - t0) * 1000.0 / 50.0
+        for _ in range(repeats):
+            if cuda:
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            for _ in range(iters):
+                _ = model(dummy_input)
+            if cuda:
+                torch.cuda.synchronize()
+            timings.append((time.perf_counter() - t0) * 1000.0 / iters)
 
-    # Benchmark DASU-Net latency
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
-        with torch.no_grad():
-            for _ in range(100):
-                _ = dasu_model(dummy_input)
-        end_event.record()
-        torch.cuda.synchronize()
-        dasu_lat = start_event.elapsed_time(end_event) / 100.0  # ms
-    else:
-        t0 = time.time()
-        with torch.no_grad():
-            for _ in range(50):
-                _ = dasu_model(dummy_input)
-        dasu_lat = (time.time() - t0) * 1000.0 / 50.0
+    # Peak memory allocated by PyTorch for this model alone: input + weights + activations
+    vram_mb = None
+    if cuda:
+        vram_mb = round((torch.cuda.max_memory_allocated(device) - mem_before) / (1024.0 * 1024.0), 1)
 
-    vit_fps = 1000.0 / vit_lat
-    dasu_fps = 1000.0 / dasu_lat
+    del model, dummy_input
+    if cuda:
+        torch.cuda.empty_cache()
 
-    # Peak VRAM allocation
-    if torch.cuda.is_available():
-        vram_mb = torch.cuda.max_memory_allocated(device) / (1024.0 * 1024.0)
-    else:
-        vram_mb = 45.0
-
-    profile_data = {
-        "vit": {
-            "params_m": vit_params / 1e6,
-            "params_raw": vit_params,
-            "latency_ms": round(vit_lat, 2),
-            "fps": round(vit_fps, 1),
-        },
-        "dasunet": {
-            "params_m": dasu_params / 1e6,
-            "params_raw": dasu_params,
-            "latency_ms": round(dasu_lat, 2),
-            "fps": round(dasu_fps, 1),
-            "vram_mb": round(vram_mb, 1),
-            "param_reduction_pct": round((1.0 - dasu_params / vit_params) * 100.0, 1),
-            "speedup": round(dasu_fps / vit_fps, 2),
-        }
+    latency_ms = float(np.median(timings))
+    return {
+        "params_m": params / 1e6,
+        "params_raw": params,
+        "latency_ms": round(latency_ms, 2),
+        "latency_ms_repeats": [round(t, 3) for t in timings],
+        "fps": round(1000.0 / latency_ms, 1),
+        "vram_mb": vram_mb,
     }
 
-    print(f"  ViT Baseline: {vit_params/1e6:.3f}M params | Latency: {vit_lat:.2f} ms | FPS: {vit_fps:.1f}")
-    print(f"  DASU-Net:     {dasu_params/1e6:.3f}M params | Latency: {dasu_lat:.2f} ms | FPS: {dasu_fps:.1f}")
-    print(f"  -> Model parameters reduced by {profile_data['dasunet']['param_reduction_pct']}%!")
+
+def run_hardware_profiling(device: torch.device):
+    """Profile latency, FPS, peak memory and parameters of each model separately."""
+    print("\n" + "="*65)
+    print("  3. RUNNING HARDWARE PROFILING")
+    print("="*65)
+
+    vit = _profile_model(dict(encoder_type="vit", decoder_type="linear", use_dual_attention=False), device)
+    dasu = _profile_model(dict(encoder_type="swin", decoder_type="nonlinear", use_dual_attention=True), device)
+
+    profile_data = {
+        "input_shape": [1, PROFILE_SHAPE["num_bands"], PROFILE_SHAPE["spatial_size"], PROFILE_SHAPE["spatial_size"]],
+        "protocol": "batch 1, torch.no_grad, 20 warm-up passes, latency = median of 5 x 100 timed passes; "
+                    "vram_mb = peak PyTorch-allocated memory (input + weights + activations) with only that model loaded",
+        "vit": vit,
+        "dasunet": {
+            **dasu,
+            "param_reduction_pct": round((1.0 - dasu["params_raw"] / vit["params_raw"]) * 100.0, 1),
+            "speedup": round(dasu["fps"] / vit["fps"], 2),
+        },
+    }
+
+    for label, prof in (("ViT Baseline", vit), ("DASU-Net", dasu)):
+        vram = "n/a" if prof["vram_mb"] is None else f"{prof['vram_mb']:.1f} MB"
+        print(f"  {label:<13} {prof['params_m']:.3f}M params | Latency: {prof['latency_ms']:.2f} ms | "
+              f"FPS: {prof['fps']:.1f} | Peak memory: {vram}")
+    print(f"  -> Model parameters reduced by {profile_data['dasunet']['param_reduction_pct']}%")
 
     return profile_data
 
 
-def generate_publication_figures(results: dict, out_dir: Path):
+def collect_environment(device: torch.device) -> dict:
+    """Software / hardware context needed to interpret the timings."""
+    return {
+        "device": torch.cuda.get_device_name(device) if device.type == "cuda" else (platform.processor() or "cpu"),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+    }
+
+
+def _mean_std(values):
+    arr = np.asarray(values, dtype=np.float64)
+    std = float(arr.std(ddof=1)) if arr.size > 1 else 0.0
+    return float(arr.mean()), std
+
+
+def summarise_benchmarks(per_seed: list, seeds: list) -> dict:
+    """Aggregate per-seed benchmark results into mean / std (per-class values are averaged)."""
+    summary = {}
+    for ds_name in BENCHMARK_DATASETS:
+        ds_summary = {}
+        for method in BENCHMARK_METHODS:
+            runs = [seed_res[ds_name][method] for seed_res in per_seed]
+            rmse, rmse_std = _mean_std([r["rmse_mean"] for r in runs])
+            sad, sad_std = _mean_std([r["sad_mean"] for r in runs])
+            ds_summary[method] = {
+                "rmse": rmse,
+                "rmse_std": rmse_std,
+                "sad": sad,
+                "sad_std": sad_std,
+                "rmse_cls": np.mean([r["rmse_cls"] for r in runs], axis=0).tolist(),
+                "sad_cls": np.mean([r["sad_cls"] for r in runs], axis=0).tolist(),
+                "runs": [{"seed": s, "rmse": r["rmse_mean"], "sad": r["sad_mean"], "epochs": r["epochs"]}
+                         for s, r in zip(seeds, runs)],
+            }
+        base = ds_summary["baseline"]
+        for method in ("dasunet_sivm", "dasunet_vca"):
+            m = ds_summary[method]
+            m["rmse_improvement_pct"] = round((1.0 - m["rmse"] / base["rmse"]) * 100.0, 2)
+            m["sad_improvement_pct"] = round((1.0 - m["sad"] / base["sad"]) * 100.0, 2)
+        summary[ds_name] = ds_summary
+    return summary
+
+
+def summarise_ablation(per_seed: list, seeds: list) -> list:
+    """Aggregate per-seed ablation rows into mean / std."""
+    rows = []
+    for i, first in enumerate(per_seed[0]):
+        runs = [seed_rows[i] for seed_rows in per_seed]
+        rmse, rmse_std = _mean_std([r["rmse"] for r in runs])
+        sad, sad_std = _mean_std([r["sad"] for r in runs])
+        rows.append({
+            "configuration": first["configuration"],
+            "manuscript_row": first["manuscript_row"],
+            "rmse": rmse,
+            "rmse_std": rmse_std,
+            "sad": sad,
+            "sad_std": sad_std,
+            "runs": [{"seed": s, "rmse": r["rmse"], "sad": r["sad"], "epochs": r["epochs"]}
+                     for s, r in zip(seeds, runs)],
+        })
+    return rows
+
+
+def print_summary(report: dict):
+    n = len(report["seeds"])
+    print("\n" + "="*65)
+    print(f"  SUMMARY (mean +/- std over {n} seed{'s' if n > 1 else ''})")
+    print("="*65)
+    for ds_name, ds_summary in report["benchmarks"].items():
+        for method, m in ds_summary.items():
+            print(f"  {ds_name:<15} {method:<13} RMSE {m['rmse']:.4f} +/- {m['rmse_std']:.4f}   "
+                  f"SAD {m['sad']:.4f} +/- {m['sad_std']:.4f}")
+    print()
+    for row in report["ablation"]:
+        print(f"  {row['configuration']:<42} RMSE {row['rmse']:.4f} +/- {row['rmse_std']:.4f}   "
+              f"SAD {row['sad']:.4f} +/- {row['sad_std']:.4f}")
+
+
+def generate_publication_figures(results: dict, out_dir: Path, sync_paper_dir: str | None = None):
     """Generate 300 DPI high-resolution figures for the IEEE conference paper."""
     print("\n" + "="*65)
     print("  4. GENERATING 300 DPI PUBLICATION FIGURES")
@@ -408,95 +490,75 @@ def generate_publication_figures(results: dict, out_dir: Path):
     plt.close()
     print(f"  Saved Classic Spectral Signatures: {spec_path}")
 
-    # Copy to paper/ directory
-    import shutil
-    for fname in ["abundance_comparison.png", "spectral_signatures.png"]:
-        src_f = out_dir / fname
-        dst_f = Path("../paper") / fname
-        shutil.copy(src_f, dst_f)
-        print(f"  Synced: {dst_f}")
+    # Optional copy into a local manuscript directory (never done implicitly)
+    if sync_paper_dir is not None:
+        paper_dir = Path(sync_paper_dir)
+        for fname in ["abundance_comparison.png", "spectral_signatures.png"]:
+            shutil.copy(out_dir / fname, paper_dir / fname)
+            print(f"  Synced: {paper_dir / fname}")
 
-    # Keep backward-compatible combined copy as well
-    shutil.copy(abu_path, Path("../paper/qualitative_comparison_combined.png"))
+        # Keep backward-compatible combined copy as well
+        shutil.copy(abu_path, paper_dir / "qualitative_comparison_combined.png")
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="DASU-Net-UAV experiments, ablation and profiling")
+    p.add_argument("--seeds", type=int, nargs="+", default=[SEED],
+                   help="Seeds for the benchmark and ablation runs; mean +/- std is reported (default: 42)")
+    p.add_argument("--out-dir", type=str, default="runs/experiments_uav",
+                   help="Output directory for all_results.json and figures")
+    p.add_argument("--sync-paper-dir", type=str, default=None,
+                   help="Also copy the figures into this existing directory (e.g. a local manuscript folder)")
+    return p.parse_args()
 
 
 def main():
-    set_seed(SEED)
+    args = parse_args()
+    if args.sync_paper_dir is not None and not Path(args.sync_paper_dir).is_dir():
+        raise SystemExit(f"--sync-paper-dir '{args.sync_paper_dir}' is not an existing directory")
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    out_dir = Path("runs/experiments_uav")
+    environment = collect_environment(device)
+    out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'='*65}")
     print(f"  DASU-Net-UAV Scientific Experiments Suite")
-    print(f"  Device: {device}")
+    print(f"  Device: {device} ({environment['device']})")
+    print(f"  Seeds:  {args.seeds}")
     print(f"  Output: {out_dir}")
     print(f"{'='*65}\n")
 
-    # 1. Benchmarks
-    benchmark_res = run_benchmarks(device, out_dir)
-
-    # 2. Ablation Study
-    ablation_res = run_ablation_study(device)
+    # 1-2. Benchmarks and ablation, repeated per seed
+    benchmark_runs = []
+    ablation_runs = []
+    for seed in args.seeds:
+        print(f"\n{'#'*65}\n  SEED {seed}\n{'#'*65}")
+        set_seed(seed)
+        benchmark_runs.append(run_benchmarks(device, seed))
+        ablation_runs.append(run_ablation_study(device, seed))
 
     # 3. Hardware Profiling
     profile_res = run_hardware_profiling(device)
 
-    # 4. Figures
-    generate_publication_figures(benchmark_res, out_dir)
-
-    # 5. Compile full scientific report
+    # 4. Compile and save the report before plotting, so a figure error cannot lose results
     report_data = {
-        "benchmarks": {
-            "uav_synthetic": {
-                "baseline": {
-                    "rmse": benchmark_res["uav_synthetic"]["baseline"]["rmse_mean"],
-                    "sad": benchmark_res["uav_synthetic"]["baseline"]["sad_mean"],
-                    "rmse_cls": benchmark_res["uav_synthetic"]["baseline"]["rmse_cls"],
-                    "sad_cls": benchmark_res["uav_synthetic"]["baseline"]["sad_cls"],
-                },
-                "dasunet_sivm": {
-                    "rmse": benchmark_res["uav_synthetic"]["dasunet_sivm"]["rmse_mean"],
-                    "sad": benchmark_res["uav_synthetic"]["dasunet_sivm"]["sad_mean"],
-                    "rmse_cls": benchmark_res["uav_synthetic"]["dasunet_sivm"]["rmse_cls"],
-                    "sad_cls": benchmark_res["uav_synthetic"]["dasunet_sivm"]["sad_cls"],
-                    "rmse_improvement_pct": round((1.0 - benchmark_res["uav_synthetic"]["dasunet_sivm"]["rmse_mean"] / benchmark_res["uav_synthetic"]["baseline"]["rmse_mean"]) * 100.0, 2),
-                    "sad_improvement_pct": round((1.0 - benchmark_res["uav_synthetic"]["dasunet_sivm"]["sad_mean"] / benchmark_res["uav_synthetic"]["baseline"]["sad_mean"]) * 100.0, 2),
-                },
-                "dasunet_vca": {
-                    "rmse": benchmark_res["uav_synthetic"]["dasunet_vca"]["rmse_mean"],
-                    "sad": benchmark_res["uav_synthetic"]["dasunet_vca"]["sad_mean"],
-                }
-            },
-            "whu_hi_longkou": {
-                "baseline": {
-                    "rmse": benchmark_res["whu_hi_longkou"]["baseline"]["rmse_mean"],
-                    "sad": benchmark_res["whu_hi_longkou"]["baseline"]["sad_mean"],
-                    "rmse_cls": benchmark_res["whu_hi_longkou"]["baseline"]["rmse_cls"],
-                    "sad_cls": benchmark_res["whu_hi_longkou"]["baseline"]["sad_cls"],
-                },
-                "dasunet_vca": {
-                    "rmse": benchmark_res["whu_hi_longkou"]["dasunet_vca"]["rmse_mean"],
-                    "sad": benchmark_res["whu_hi_longkou"]["dasunet_vca"]["sad_mean"],
-                    "rmse_cls": benchmark_res["whu_hi_longkou"]["dasunet_vca"]["rmse_cls"],
-                    "sad_cls": benchmark_res["whu_hi_longkou"]["dasunet_vca"]["sad_cls"],
-                    "rmse_improvement_pct": round((1.0 - benchmark_res["whu_hi_longkou"]["dasunet_vca"]["rmse_mean"] / benchmark_res["whu_hi_longkou"]["baseline"]["rmse_mean"]) * 100.0, 2),
-                    "sad_improvement_pct": round((1.0 - benchmark_res["whu_hi_longkou"]["dasunet_vca"]["sad_mean"] / benchmark_res["whu_hi_longkou"]["baseline"]["sad_mean"]) * 100.0, 2),
-                },
-                "dasunet_sivm": {
-                    "rmse": benchmark_res["whu_hi_longkou"]["dasunet_sivm"]["rmse_mean"],
-                    "sad": benchmark_res["whu_hi_longkou"]["dasunet_sivm"]["sad_mean"],
-                }
-            }
-        },
-        "ablation": ablation_res,
+        "environment": environment,
+        "seeds": args.seeds,
+        "benchmarks": summarise_benchmarks(benchmark_runs, args.seeds),
+        "ablation": summarise_ablation(ablation_runs, args.seeds),
         "profiling": profile_res,
     }
 
-    # Save JSON
     json_path = out_dir / "all_results.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2)
     print(f"\n  Saved structured results to: {json_path}")
+
+    print_summary(report_data)
+
+    # 5. Figures (from the first seed)
+    generate_publication_figures(benchmark_runs[0], out_dir, args.sync_paper_dir)
 
     print("\n" + "="*65)
     print("  ALL EXPERIMENTS COMPLETED SUCCESSFULLY!")

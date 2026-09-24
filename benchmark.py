@@ -12,9 +12,10 @@ Configurations tested:
     2. DASU-Net + SiVM init              — our model, Simplex Volume init
     3. DASU-Net + VCA  init              — our model, Vertex Component init
 
-Datasets:
-    - samson  (95x95,  156 bands, 3 endmembers)
-    - apex    (110x110, 285 bands, 4 endmembers)
+Datasets (default):
+    - uav_synthetic   (100x100, 150 bands, 4 endmembers, synthetic)
+    - whu_hi_longkou  (100x100, 270 bands, 5 endmembers, synthetic LongKou-like surrogate)
+    samson / apex can be selected with --datasets.
 
 Usage:
     python benchmark.py
@@ -418,7 +419,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--check-every", type=int, default=10,
                    help="Plateau check frequency in epochs (default: 10)")
     p.add_argument("--datasets", nargs="+", default=["uav_synthetic", "whu_hi_longkou"])
-    p.add_argument("--runs-dir", type=str, default="runs")
+    # Wiped at start-up, so keep it separate from runs/experiments_uav
+    p.add_argument("--runs-dir", type=str, default="runs/benchmark")
     return p.parse_args()
 
 
